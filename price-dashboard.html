@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>반도체 시세</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #121826;
+    --surface-alt: #1a2236;
+    --border: #2a3452;
+    --text: #e8ecf4;
+    --text-dim: #8892a8;
+    --up: #ff4d4f;
+    --up-bg: rgba(255, 77, 79, 0.1);
+    --down: #4da3ff;
+    --down-bg: rgba(77, 163, 255, 0.1);
+    --accent: #ffd666;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 16px 32px;
+  }
+
+  /* Header */
+  .header {
+    padding: 20px 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-title {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+  }
+  .header-date {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Update badge */
+  .update-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .update-dot {
+    width: 6px; height: 6px;
+    background: #52c41a;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Price Cards */
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+    padding-left: 2px;
+  }
+
+  .price-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  .price-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.15s;
+  }
+  .price-card:active {
+    background: var(--surface-alt);
+  }
+
+  .price-name {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .price-spec {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .price-right {
+    text-align: right;
+  }
+  .price-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .price-change {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    margin-top: 2px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .price-change.up {
+    color: var(--up);
+    background: var(--up-bg);
+  }
+  .price-change.down {
+    color: var(--down);
+    background: var(--down-bg);
+  }
+  .price-change.flat {
+    color: var(--text-dim);
+    background: var(--surface-alt);
+  }
+
+  /* Tabs */
+  .chart-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 3px;
+  }
+  .chart-tab {
+    flex: 1;
+    padding: 8px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .chart-tab.active {
+    background: var(--surface-alt);
+    color: var(--text);
+  }
+
+  /* Chart */
+  .chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 220px;
+  }
+
+  /* Period selector */
+  .period-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .period-tab {
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .period-tab.active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding-top: 16px;
+    line-height: 1.6;
+  }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 60px 0;
+    color: var(--text-dim);
+  }
+  .loading-spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Error state */
+  .error-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+  }
+  .error-box p {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <div class="loading">
+    <div class="loading-spinner"></div>
+    <div>시세 불러오는 중...</div>
+  </div>
+</div>
+
+<script>
+// ============================================
+// 설정: 여기만 수정하면 됨
+// ============================================
+// Google Sheets 게시 URL (CSV)
+// Sheets > 파일 > 웹에 게시 > CSV 선택 후 URL 붙여넣기
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSwjJl1_4nVTHvCk6FH7AISnH3Vicl1IHhBiQ9k5QQLb4cngKRP7G2SsVTFub4uqj-jrN5uD8vHnGU/pub?gid=1597448713&single=true&output=csv';  // TODO: 실제 URL로 교체
+
+// 품목 정의
+const PRODUCTS = [
+  { key: 'ddr4_spot', name: 'DDR4 8Gb', spec: '1Gx8 3200MT/s · Spot' },
+  { key: 'ddr5_spot', name: 'DDR5 16Gb', spec: '2Gx8 4800/5600 · Spot' },
+  { key: 'nand_spot', name: 'NAND 512Gb', spec: 'TLC Wafer · Spot' },
+  { key: 'ddr5_contract', name: 'DDR5 고정가', spec: '16Gb · Contract' },
+];
+
+// ============================================
+// CSV 파싱 & 데이터 처리
+// ============================================
+function parseCSV(csv) {
+  const lines = csv.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',');
+    const row = {};
+    headers.forEach((h, idx) => {
+      row[h] = vals[idx] ? vals[idx].trim() : '';
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function getChange(current, previous) {
+  if (!previous || previous === 0) return { pct: 0, dir: 'flat' };
+  const pct = ((current - previous) / previous) * 100;
+  return {
+    pct: pct,
+    dir: pct > 0.01 ? 'up' : pct < -0.01 ? 'down' : 'flat'
+  };
+}
+
+// ============================================
+// 데모 데이터 (Sheets 연결 전 테스트용)
+// ============================================
+function generateDemoData() {
+  const rows = [];
+  const today = new Date();
+  const baseValues = {
+    ddr4_spot: 11.2,
+    ddr5_spot: 3.8,
+    nand_spot: 6.1,
+    ddr5_contract: 3.5,
+  };
+
+  for (let i = 59; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    // Skip weekends
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+
+    const dateStr = d.toISOString().split('T')[0];
+    const row = { date: dateStr };
+    PRODUCTS.forEach(p => {
+      const noise = (Math.random() - 0.35) * 0.15;
+      const trend = (60 - i) * 0.012;
+      baseValues[p.key] += baseValues[p.key] * noise * 0.05 + trend * 0.01;
+      row[p.key] = parseFloat(baseValues[p.key].toFixed(3));
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ============================================
+// 렌더링
+// ============================================
+let chart = null;
+let allData = [];
+let currentProduct = 0;
+let currentPeriod = 30;
+
+function render(data) {
+  allData = data;
+  const latest = data[data.length - 1];
+  const prev = data[data.length - 2];
+  const updateDate = latest.date;
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="header">
+      <div class="header-title">반도체 시세</div>
+      <div class="header-date">${updateDate}</div>
+    </div>
+
+    <div class="update-bar">
+      <span class="update-dot"></span>
+      최근 업데이트 기준 · 단위: USD
+    </div>
+
+    <div class="section-label">오늘의 시세</div>
+    <div class="price-grid">
+      ${PRODUCTS.map(p => {
+        const val = latest[p.key];
+        const prevVal = prev ? prev[p.key] : val;
+        const change = getChange(val, prevVal);
+        const sign = change.dir === 'up' ? '+' : change.dir === 'down' ? '' : '';
+        const arrow = change.dir === 'up' ? '▲' : change.dir === 'down' ? '▼' : '—';
+        return `
+          <div class="price-card">
+            <div>
+              <div class="price-name">${p.name}</div>
+              <div class="price-spec">${p.spec}</div>
+            </div>
+            <div class="price-right">
+              <div class="price-value">$${val.toFixed(3)}</div>
+              <div class="price-change ${change.dir}">
+                ${arrow} ${sign}${change.pct.toFixed(2)}%
+              </div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+
+    <div class="section-label">가격 추이</div>
+    <div class="chart-tabs">
+      ${PRODUCTS.map((p, i) => `
+        <button class="chart-tab ${i === currentProduct ? 'active' : ''}" data-idx="${i}">
+          ${p.name.split(' ')[0]}
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="period-tabs">
+      ${[7, 14, 30, 60].map(d => `
+        <button class="period-tab ${d === currentPeriod ? 'active' : ''}" data-days="${d}">
+          ${d}일
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-wrap">
+        <canvas id="priceChart"></canvas>
+      </div>
+    </div>
+
+    <div class="footer">
+      데이터 출처: DRAMeXchange (TrendForce)<br>
+      본 서비스는 참고용이며, 실제 거래가와 다를 수 있습니다.
+    </div>
+  `;
+
+  // Event listeners
+  document.querySelectorAll('.chart-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentProduct = parseInt(tab.dataset.idx);
+      render(allData);
+    });
+  });
+  document.querySelectorAll('.period-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentPeriod = parseInt(tab.dataset.days);
+      render(allData);
+    });
+  });
+
+  drawChart();
+}
+
+function drawChart() {
+  const canvas = document.getElementById('priceChart');
+  if (!canvas) return;
+
+  if (chart) chart.destroy();
+
+  const product = PRODUCTS[currentProduct];
+  const sliced = allData.slice(-currentPeriod);
+  const labels = sliced.map(r => {
+    const d = new Date(r.date);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  });
+  const values = sliced.map(r => r[product.key]);
+
+  const isUp = values[values.length - 1] >= values[0];
+  const lineColor = isUp ? '#ff4d4f' : '#4da3ff';
+
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+  gradient.addColorStop(0, isUp ? 'rgba(255,77,79,0.25)' : 'rgba(77,163,255,0.25)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        borderColor: lineColor,
+        borderWidth: 2,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHitRadius: 20,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: lineColor,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index',
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2236',
+          borderColor: '#2a3452',
+          borderWidth: 1,
+          titleFont: { family: 'JetBrains Mono', size: 11 },
+          bodyFont: { family: 'JetBrains Mono', size: 13, weight: 'bold' },
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            label: (ctx) => `$${ctx.parsed.y.toFixed(3)}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(42,52,82,0.5)', drawBorder: false },
+          ticks: {
+            color: '#8892a8',
+            font: { family: 'JetBrains Mono', size: 10 },
+            maxTicksLimit: 6,
+            maxRotation: 0,
+          },
+          border: { display: false },
+        },
+        y: {
+          grid: { color: 'rgba(42,52,82,0.5)', drawBorder: false },
+          ticks: {
+            color: '#8892a8',
+            font: { family: 'JetBrains Mono', size: 10 },
+            callback: (v) => '$' + v.toFixed(2),
+          },
+          border: { display: false },
+        }
+      }
+    }
+  });
+}
+
+// ============================================
+// 초기화
+// ============================================
+async function init() {
+  if (SHEET_CSV_URL) {
+    try {
+      const res = await fetch(SHEET_CSV_URL);
+      const csv = await res.text();
+      const data = parseCSV(csv);
+      // 숫자 변환
+      data.forEach(row => {
+        PRODUCTS.forEach(p => {
+          row[p.key] = parseFloat(row[p.key]) || 0;
+        });
+      });
+      render(data);
+    } catch (e) {
+      console.error('Sheets 로드 실패:', e);
+      // 폴백: 데모 데이터
+      render(generateDemoData());
+    }
+  } else {
+    // Sheets URL 미설정 → 데모 데이터
+    render(generateDemoData());
+  }
+}
+
+init();
+</script>
+</body>
+</html>
