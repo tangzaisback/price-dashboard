@@ -509,12 +509,21 @@ function getPendingData() {
   const lastRow = sheet.getLastRow();
 
   for (let row = lastRow; row >= 2; row--) {
-    const status = sheet.getRange(row, statusCol).getValue();
+    const status = sheet.getRange(row, statusCol).getValue().toString().trim();
     if (status === '임시') {
       return rowToObject(sheet, row);
     }
   }
   return null;
+}
+
+// 디버그: getPendingData 직접 테스트
+function 디버그_getPendingData() {
+  const result = getPendingData();
+  Logger.log('getPendingData 결과: ' + JSON.stringify(result));
+  if (result) {
+    Logger.log('date 타입: ' + typeof result.date + ' | 값: ' + result.date);
+  }
 }
 
 // 임시 행을 확정으로 변경
@@ -576,8 +585,11 @@ function getPreviousPrices(date) {
   const lastRow = sheet.getLastRow();
 
   for (let row = lastRow; row >= 2; row--) {
-    const rowDate = sheet.getRange(row, 1).getValue();
-    const status = sheet.getRange(row, statusCol).getValue();
+    const v = sheet.getRange(row, 1).getValue();
+    const rowDate = (v instanceof Date)
+      ? Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd')
+      : v.toString();
+    const status = sheet.getRange(row, statusCol).getValue().toString().trim();
     if (status === '확정' && rowDate < date) {
       return rowToObject(sheet, row);
     }
@@ -600,7 +612,11 @@ function 삭제_기존트리거() {
 function findRowByDate(sheet, date) {
   const lastRow = sheet.getLastRow();
   for (let row = lastRow; row >= 2; row--) {
-    if (sheet.getRange(row, 1).getValue() === date) return row;
+    const v = sheet.getRange(row, 1).getValue();
+    const rowDate = (v instanceof Date)
+      ? Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd')
+      : v.toString();
+    if (rowDate === date) return row;
   }
   return -1;
 }
@@ -609,6 +625,16 @@ function rowToObject(sheet, row) {
   const headers = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
   const values = sheet.getRange(row, 1, 1, HEADERS.length).getValues()[0];
   const result = {};
-  headers.forEach((h, i) => { result[h] = values[i]; });
+  headers.forEach((h, i) => {
+    // date 열은 항상 yyyy-MM-dd 문자열로 변환
+    if (h === 'date') {
+      const v = values[i];
+      result[h] = (v instanceof Date)
+        ? Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd')
+        : v.toString();
+    } else {
+      result[h] = values[i];
+    }
+  });
   return result;
 }
