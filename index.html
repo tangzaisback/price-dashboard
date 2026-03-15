@@ -156,10 +156,17 @@
     background: var(--surface);
     border-radius: 8px;
     padding: 3px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .chart-tabs::-webkit-scrollbar {
+    display: none;
   }
   .chart-tab {
-    flex: 1;
-    padding: 8px;
+    flex-shrink: 0;
+    min-width: fit-content;
+    padding: 8px 12px;
     text-align: center;
     font-size: 13px;
     font-weight: 700;
@@ -271,10 +278,12 @@ const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSwjJl1_
 
 // 품목 정의
 const PRODUCTS = [
-  { key: 'ddr4_spot', name: 'DDR4 8Gb', spec: '1Gx8 3200MT/s · Spot' },
-  { key: 'ddr5_spot', name: 'DDR5 16Gb', spec: '2Gx8 4800/5600 · Spot' },
-  { key: 'nand_spot', name: 'NAND 512Gb', spec: 'TLC Wafer · Spot' },
-  { key: 'ddr5_contract', name: 'DDR5 고정가', spec: '16Gb · Contract' },
+  { key: 'ddr5_16gb', name: 'DDR5 16Gb', spec: '2Gx8 4800/5600 · Spot' },
+  { key: 'ddr4_8gb', name: 'DDR4 8Gb', spec: '1Gx8 3200 · Spot' },
+  { key: 'ddr3_4gb', name: 'DDR3 4Gb', spec: '512Mx8 1600/1866 · Spot' },
+  { key: 'nand_tlc_512', name: 'NAND TLC 512Gb', spec: 'Wafer Spot' },
+  { key: 'nand_mlc_64', name: 'MLC 64Gb', spec: '8GBx8 · Spot' },
+  { key: 'dxi', name: 'DXI', spec: 'DRAMeXchange Index' },
 ];
 
 // ============================================
@@ -311,10 +320,12 @@ function generateDemoData() {
   const rows = [];
   const today = new Date();
   const baseValues = {
-    ddr4_spot: 11.2,
-    ddr5_spot: 3.8,
-    nand_spot: 6.1,
-    ddr5_contract: 3.5,
+    ddr5_16gb: 39.3,
+    ddr4_8gb: 33.6,
+    ddr3_4gb: 6.4,
+    nand_tlc_512: 20.5,
+    nand_mlc_64: 9.3,
+    dxi: 38250,
   };
 
   for (let i = 59; i >= 0; i--) {
@@ -362,9 +373,9 @@ function render(data) {
       최근 업데이트 기준 · 단위: USD
     </div>
 
-    <div class="section-label">오늘의 시세</div>
+    <div class="section-label">DRAM</div>
     <div class="price-grid">
-      ${PRODUCTS.map(p => {
+      ${PRODUCTS.slice(0, 3).map(p => {
         const val = latest[p.key];
         const prevVal = prev ? prev[p.key] : val;
         const change = getChange(val, prevVal);
@@ -386,11 +397,37 @@ function render(data) {
       }).join('')}
     </div>
 
+    <div class="section-label">NAND · 지수</div>
+    <div class="price-grid">
+      ${PRODUCTS.slice(3).map(p => {
+        const val = latest[p.key];
+        const prevVal = prev ? prev[p.key] : val;
+        const change = getChange(val, prevVal);
+        const sign = change.dir === 'up' ? '+' : change.dir === 'down' ? '' : '';
+        const arrow = change.dir === 'up' ? '▲' : change.dir === 'down' ? '▼' : '—';
+        const isDxi = p.key === 'dxi';
+        const displayVal = isDxi ? val.toFixed(2) : '$' + val.toFixed(3);
+        return `
+          <div class="price-card">
+            <div>
+              <div class="price-name">${p.name}</div>
+              <div class="price-spec">${p.spec}</div>
+            </div>
+            <div class="price-right">
+              <div class="price-value">${displayVal}</div>
+              <div class="price-change ${change.dir}">
+                ${arrow} ${sign}${change.pct.toFixed(2)}%
+              </div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+
     <div class="section-label">가격 추이</div>
     <div class="chart-tabs">
       ${PRODUCTS.map((p, i) => `
         <button class="chart-tab ${i === currentProduct ? 'active' : ''}" data-idx="${i}">
-          ${p.name.split(' ')[0]}
+          ${p.name}
         </button>
       `).join('')}
     </div>
@@ -489,7 +526,10 @@ function drawChart() {
           padding: 10,
           cornerRadius: 8,
           callbacks: {
-            label: (ctx) => `$${ctx.parsed.y.toFixed(3)}`
+            label: (ctx) => {
+              const isDxi = PRODUCTS[currentProduct].key === 'dxi';
+              return isDxi ? ctx.parsed.y.toFixed(2) : `$${ctx.parsed.y.toFixed(3)}`;
+            }
           }
         }
       },
@@ -509,7 +549,10 @@ function drawChart() {
           ticks: {
             color: '#8892a8',
             font: { family: 'JetBrains Mono', size: 10 },
-            callback: (v) => '$' + v.toFixed(2),
+            callback: (v) => {
+              const isDxi = PRODUCTS[currentProduct].key === 'dxi';
+              return isDxi ? v.toFixed(0) : '$' + v.toFixed(2);
+            },
           },
           border: { display: false },
         }
