@@ -194,6 +194,10 @@
     position: relative;
     height: 220px;
   }
+  .chart-wrap-tall {
+    position: relative;
+    height: 240px;
+  }
 
   /* Period selector */
   .period-tabs {
@@ -274,7 +278,8 @@
 // ============================================
 // Google Sheets 게시 URL (CSV)
 // Sheets > 파일 > 웹에 게시 > CSV 선택 후 URL 붙여넣기
-const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSwjJl1_4nVTHvCk6FH7AISnH3Vicl1IHhBiQ9k5QQLb4cngKRP7G2SsVTFub4uqj-jrN5uD8vHnGU/pub?gid=1597448713&single=true&output=csv';  // TODO: 실제 URL로 교체
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSwjJl1_4nVTHvCk6FH7AISnH3Vicl1IHhBiQ9k5QQLb4cngKRP7G2SsVTFub4uqj-jrN5uD8vHnGU/pub?gid=1597448713&single=true&output=csv';
+const SOX_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSwjJl1_4nVTHvCk6FH7AISnH3Vicl1IHhBiQ9k5QQLb4cngKRP7G2SsVTFub4uqj-jrN5uD8vHnGU/pub?gid=568408567&single=true&output=csv';  // TODO: Google Sheets SOX 탭 CSV URL
 
 // 품목 정의
 const PRODUCTS = [
@@ -313,6 +318,38 @@ function getChange(current, previous) {
 }
 
 // ============================================
+// SOX 데이터 파싱
+// ============================================
+function normalizeSoxDate(str) {
+  str = str.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // M/D/YYYY 또는 MM/DD/YYYY 미국식 포맷
+  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  }
+  return str;
+}
+
+function parseSoxCSV(csv) {
+  const lines = csv.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  const dateIdx = headers.findIndex(h => h.toLowerCase() === 'date');
+  const closeIdx = headers.findIndex(h => h.toLowerCase() === 'close');
+  if (dateIdx === -1 || closeIdx === -1) return [];
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',');
+    const date = normalizeSoxDate(vals[dateIdx] || '');
+    const close = parseFloat(vals[closeIdx]);
+    if (date && !isNaN(close)) {
+      rows.push({ date, close });
+    }
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// ============================================
 // 데모 데이터 (Sheets 연결 전 테스트용)
 // ============================================
 function generateDemoData() {
@@ -345,13 +382,43 @@ function generateDemoData() {
   return rows;
 }
 
+function generateSoxDemoData() {
+  const rows = [];
+  const today = new Date();
+  let val = 5000;
+
+  for (let i = 59; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+
+    const dateStr = d.toISOString().split('T')[0];
+    const noise = (Math.random() - 0.45) * 0.02;
+    const trend = (60 - i) * 0.5;
+    val += val * noise + trend * 0.03;
+    rows.push({ date: dateStr, close: parseFloat(val.toFixed(2)) });
+  }
+  return rows;
+}
+
 // ============================================
 // 렌더링
 // ============================================
 let chart = null;
+let soxChart = null;
 let allData = [];
+let soxData = [];
 let currentProduct = 0;
 let currentPeriod = 30;
+let currentSoxProduct = 0;
+let currentSoxPeriod = 60;
+
+const SOX_PERIODS = [
+  { label: '30일', value: 30 },
+  { label: '60일', value: 60 },
+  { label: '90일', value: 90 },
+  { label: '전체', value: 0 },
+];
 
 function render(data) {
   allData = data;
@@ -442,27 +509,65 @@ function render(data) {
       </div>
     </div>
 
+    <div class="section-label">메모리 시세 vs SOX 지수</div>
+    <div class="chart-tabs" id="soxProductTabs">
+      ${PRODUCTS.map((p, i) => `
+        <button class="chart-tab ${i === currentSoxProduct ? 'active' : ''}" data-idx="${i}">
+          ${p.name}
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="period-tabs" id="soxPeriodTabs">
+      ${SOX_PERIODS.map(({ label, value }) => `
+        <button class="period-tab ${value === currentSoxPeriod ? 'active' : ''}" data-days="${value}">
+          ${label}
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-wrap-tall">
+        <canvas id="soxChart"></canvas>
+      </div>
+    </div>
+
     <div class="footer">
       데이터 출처: DRAMeXchange (TrendForce)<br>
       본 서비스는 참고용이며, 실제 거래가와 다를 수 있습니다.
     </div>
   `;
 
-  // Event listeners
-  document.querySelectorAll('.chart-tab').forEach(tab => {
+  // 가격 추이 탭 이벤트
+  document.querySelectorAll('.chart-tab:not(#soxProductTabs .chart-tab)').forEach(tab => {
     tab.addEventListener('click', () => {
       currentProduct = parseInt(tab.dataset.idx);
       render(allData);
     });
   });
-  document.querySelectorAll('.period-tab').forEach(tab => {
+  document.querySelectorAll('.period-tab:not(#soxPeriodTabs .period-tab)').forEach(tab => {
     tab.addEventListener('click', () => {
       currentPeriod = parseInt(tab.dataset.days);
       render(allData);
     });
   });
 
+  // SOX 탭 이벤트
+  document.querySelectorAll('#soxProductTabs .chart-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentSoxProduct = parseInt(tab.dataset.idx);
+      render(allData);
+    });
+  });
+  document.querySelectorAll('#soxPeriodTabs .period-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentSoxPeriod = parseInt(tab.dataset.days);
+      render(allData);
+    });
+  });
+
   drawChart();
+  drawSoxChart();
 }
 
 function drawChart() {
@@ -551,31 +656,192 @@ function drawChart() {
   });
 }
 
+function drawSoxChart() {
+  const canvas = document.getElementById('soxChart');
+  if (!canvas) return;
+
+  if (soxChart) soxChart.destroy();
+
+  const product = PRODUCTS[currentSoxProduct];
+
+  // 기간 필터: value=0이면 전체
+  const memSliced = currentSoxPeriod === 0
+    ? allData
+    : allData.slice(-currentSoxPeriod);
+
+  // inner join: 두 데이터셋 모두 존재하는 날짜만
+  const soxMap = new Map(soxData.map(r => [r.date, r.close]));
+  const joined = memSliced.filter(r => soxMap.has(r.date));
+
+  const labels = joined.map(r => {
+    const d = new Date(r.date);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  });
+  const memValues = joined.map(r => r[product.key]);
+  const soxValues = joined.map(r => soxMap.get(r.date));
+
+  const isUp = memValues.length > 1
+    ? memValues[memValues.length - 1] >= memValues[0]
+    : true;
+  const lineColor = isUp ? '#ff4d4f' : '#4da3ff';
+
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 240);
+  gradient.addColorStop(0, isUp ? 'rgba(255,77,79,0.2)' : 'rgba(77,163,255,0.2)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+  soxChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: product.name,
+          data: memValues,
+          borderColor: lineColor,
+          borderWidth: 2,
+          backgroundColor: gradient,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHitRadius: 20,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: lineColor,
+          yAxisID: 'yMem',
+        },
+        {
+          label: 'SOX 지수',
+          data: soxValues,
+          borderColor: 'rgba(136, 146, 176, 0.8)',
+          borderWidth: 1.5,
+          borderDash: [5, 5],
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHitRadius: 20,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: 'rgba(136, 146, 176, 0.8)',
+          yAxisID: 'ySOX',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index',
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          align: 'start',
+          labels: {
+            color: '#8892a8',
+            font: { family: 'JetBrains Mono', size: 11 },
+            boxWidth: 20,
+            boxHeight: 2,
+            padding: 12,
+            usePointStyle: false,
+          },
+        },
+        tooltip: {
+          backgroundColor: '#1a2236',
+          borderColor: '#2a3452',
+          borderWidth: 1,
+          titleFont: { family: 'JetBrains Mono', size: 11 },
+          bodyFont: { family: 'JetBrains Mono', size: 12, weight: 'bold' },
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            label: (item) => {
+              if (item.datasetIndex === 0) {
+                return ` ${item.dataset.label}: $${item.parsed.y.toFixed(3)}`;
+              }
+              return ` ${item.dataset.label}: ${item.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(42,52,82,0.5)', drawBorder: false },
+          ticks: {
+            color: '#8892a8',
+            font: { family: 'JetBrains Mono', size: 10 },
+            maxTicksLimit: 6,
+            maxRotation: 0,
+          },
+          border: { display: false },
+        },
+        yMem: {
+          position: 'left',
+          grid: { color: 'rgba(42,52,82,0.5)', drawBorder: false },
+          ticks: {
+            color: '#8892a8',
+            font: { family: 'JetBrains Mono', size: 10 },
+            maxTicksLimit: 5,
+            callback: (v) => '$' + v.toFixed(2),
+          },
+          border: { display: false },
+        },
+        ySOX: {
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: '#8892a8',
+            font: { family: 'JetBrains Mono', size: 10 },
+            maxTicksLimit: 5,
+            callback: (v) => v.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+          },
+          border: { display: false },
+        },
+      }
+    }
+  });
+}
+
 // ============================================
 // 초기화
 // ============================================
 async function init() {
-  if (SHEET_CSV_URL) {
+  // 메모리 시세 fetch
+  const memPromise = (async () => {
+    if (!SHEET_CSV_URL) return generateDemoData();
     try {
       const res = await fetch(SHEET_CSV_URL);
       const csv = await res.text();
       const data = parseCSV(csv);
-      // 숫자 변환
       data.forEach(row => {
         PRODUCTS.forEach(p => {
           row[p.key] = parseFloat(row[p.key]) || 0;
         });
       });
-      render(data);
+      return data;
     } catch (e) {
       console.error('Sheets 로드 실패:', e);
-      // 폴백: 데모 데이터
-      render(generateDemoData());
+      return generateDemoData();
     }
-  } else {
-    // Sheets URL 미설정 → 데모 데이터
-    render(generateDemoData());
-  }
+  })();
+
+  // SOX fetch
+  const soxPromise = (async () => {
+    if (!SOX_CSV_URL) return generateSoxDemoData();
+    try {
+      const res = await fetch(SOX_CSV_URL);
+      const csv = await res.text();
+      return parseSoxCSV(csv);
+    } catch (e) {
+      console.error('SOX 로드 실패:', e);
+      return generateSoxDemoData();
+    }
+  })();
+
+  const [memData, fetchedSox] = await Promise.all([memPromise, soxPromise]);
+  soxData = fetchedSox;
+  render(memData);
 }
 
 init();
