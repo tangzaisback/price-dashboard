@@ -332,15 +332,20 @@ function getChange(current, previous) {
 // ============================================
 // SOX 데이터 파싱
 // ============================================
-function normalizeSoxDate(str) {
+function parseDate(str) {
   str = str.trim();
+  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-  // M/D/YYYY 또는 MM/DD/YYYY 미국식 포맷
-  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
-  }
-  return str;
+  // YYYY/MM/DD
+  const ymd = str.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+  // M/D/YYYY 또는 MM/DD/YYYY
+  const mdy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
+  // fallback: new Date()
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  return null;
 }
 
 function parseSoxCSV(csv) {
@@ -351,11 +356,15 @@ function parseSoxCSV(csv) {
   if (dateIdx === -1 || closeIdx === -1) return [];
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(',');
-    const date = normalizeSoxDate(vals[dateIdx] || '');
-    const close = parseFloat(vals[closeIdx]);
-    if (date && !isNaN(close)) {
-      rows.push({ date, close });
+    try {
+      const vals = lines[i].split(',');
+      const date = parseDate(vals[dateIdx] || '');
+      const close = parseFloat(vals[closeIdx]);
+      if (date && !isNaN(close)) {
+        rows.push({ date, close });
+      }
+    } catch (e) {
+      // 파싱 실패한 행은 건너뜀
     }
   }
   return rows.sort((a, b) => a.date.localeCompare(b.date));
@@ -582,6 +591,13 @@ function render(data) {
   drawSoxChart();
 }
 
+function getChartConfig(dataCount) {
+  if (dataCount <= 30)  return { pxPerPoint: 16, maxTicksLimit: 8,  useLongLabel: false };
+  if (dataCount <= 60)  return { pxPerPoint: 10, maxTicksLimit: 10, useLongLabel: false };
+  if (dataCount <= 90)  return { pxPerPoint: 7,  maxTicksLimit: 10, useLongLabel: true  };
+  return                       { pxPerPoint: 5,  maxTicksLimit: 12, useLongLabel: true  };
+}
+
 function drawChart() {
   const canvas = document.getElementById('priceChart');
   if (!canvas) return;
@@ -590,9 +606,12 @@ function drawChart() {
 
   const product = PRODUCTS[currentProduct];
   const sliced = allData.slice(-currentPeriod);
+  const { pxPerPoint, maxTicksLimit, useLongLabel } = getChartConfig(sliced.length);
   const labels = sliced.map(r => {
     const d = new Date(r.date);
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    return useLongLabel
+      ? `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}`
+      : `${d.getMonth() + 1}/${d.getDate()}`;
   });
   const values = sliced.map(r => r[product.key]);
 
@@ -601,7 +620,7 @@ function drawChart() {
 
   const containerEl = canvas.closest('.chart-container');
   const availableWidth = containerEl.clientWidth - 32;
-  const canvasWidth = Math.max(availableWidth, labels.length * 12);
+  const canvasWidth = Math.max(availableWidth, sliced.length * pxPerPoint);
   canvas.width = canvasWidth;
   canvas.height = 220;
   canvas.parentElement.style.width = canvasWidth + 'px';
@@ -656,7 +675,7 @@ function drawChart() {
           ticks: {
             color: '#8892a8',
             font: { family: 'JetBrains Mono', size: 10 },
-            maxTicksLimit: 6,
+            maxTicksLimit: maxTicksLimit,
             maxRotation: 0,
           },
           border: { display: false },
@@ -692,9 +711,12 @@ function drawSoxChart() {
   // 메모리 데이터 맵 (날짜 → 가격)
   const memMap = new Map(allData.map(r => [r.date, r[product.key]]));
 
+  const { pxPerPoint, maxTicksLimit, useLongLabel } = getChartConfig(soxSliced.length);
   const labels = soxSliced.map(r => {
     const d = new Date(r.date);
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    return useLongLabel
+      ? `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}`
+      : `${d.getMonth() + 1}/${d.getDate()}`;
   });
   // SOX는 항상 전체 표시, 메모리는 없는 날짜 null (선 끊김)
   const soxValues = soxSliced.map(r => r.close);
@@ -712,7 +734,7 @@ function drawSoxChart() {
 
   const containerEl = canvas.closest('.chart-container');
   const availableWidth = containerEl.clientWidth - 32;
-  const canvasWidth = Math.max(availableWidth, labels.length * 12);
+  const canvasWidth = Math.max(availableWidth, soxSliced.length * pxPerPoint);
   canvas.width = canvasWidth;
   canvas.height = 240;
   canvas.parentElement.style.width = canvasWidth + 'px';
@@ -804,7 +826,7 @@ function drawSoxChart() {
           ticks: {
             color: '#8892a8',
             font: { family: 'JetBrains Mono', size: 10 },
-            maxTicksLimit: 6,
+            maxTicksLimit: maxTicksLimit,
             maxRotation: 0,
           },
           border: { display: false },
