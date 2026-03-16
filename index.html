@@ -192,6 +192,15 @@
     border-radius: 12px;
     padding: 16px;
     margin-bottom: 24px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chart-container::-webkit-scrollbar {
+    height: 4px;
+  }
+  .chart-container::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
   }
   .chart-wrap {
     position: relative;
@@ -590,6 +599,13 @@ function drawChart() {
   const isUp = values[values.length - 1] >= values[0];
   const lineColor = isUp ? '#ff4d4f' : '#4da3ff';
 
+  const containerEl = canvas.closest('.chart-container');
+  const availableWidth = containerEl.clientWidth - 32;
+  const canvasWidth = Math.max(availableWidth, labels.length * 12);
+  canvas.width = canvasWidth;
+  canvas.height = 220;
+  canvas.parentElement.style.width = canvasWidth + 'px';
+
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createLinearGradient(0, 0, 0, 220);
   gradient.addColorStop(0, isUp ? 'rgba(255,77,79,0.25)' : 'rgba(77,163,255,0.25)');
@@ -613,7 +629,7 @@ function drawChart() {
       }]
     },
     options: {
-      responsive: true,
+      responsive: false,
       maintainAspectRatio: false,
       interaction: {
         intersect: false,
@@ -657,6 +673,7 @@ function drawChart() {
       }
     }
   });
+  containerEl.scrollLeft = containerEl.scrollWidth;
 }
 
 function drawSoxChart() {
@@ -692,6 +709,13 @@ function drawSoxChart() {
     ? memPresent[memPresent.length - 1] >= memPresent[0]
     : true;
   const lineColor = isUp ? '#ff4d4f' : '#4da3ff';
+
+  const containerEl = canvas.closest('.chart-container');
+  const availableWidth = containerEl.clientWidth - 32;
+  const canvasWidth = Math.max(availableWidth, labels.length * 12);
+  canvas.width = canvasWidth;
+  canvas.height = 240;
+  canvas.parentElement.style.width = canvasWidth + 'px';
 
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createLinearGradient(0, 0, 0, 240);
@@ -736,7 +760,7 @@ function drawSoxChart() {
       ]
     },
     options: {
-      responsive: true,
+      responsive: false,
       maintainAspectRatio: false,
       interaction: {
         intersect: false,
@@ -810,6 +834,7 @@ function drawSoxChart() {
       }
     }
   });
+  containerEl.scrollLeft = containerEl.scrollWidth;
 }
 
 // ============================================
