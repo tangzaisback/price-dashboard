@@ -509,7 +509,7 @@ function render(data) {
       </div>
     </div>
 
-    <div class="section-label">메모리 시세 vs SOX 지수</div>
+    <div class="section-label">메모리 시세 vs SOXX 지수</div>
     <div class="chart-tabs" id="soxProductTabs">
       ${PRODUCTS.map((p, i) => `
         <button class="chart-tab ${i === currentSoxProduct ? 'active' : ''}" data-idx="${i}">
@@ -664,24 +664,29 @@ function drawSoxChart() {
 
   const product = PRODUCTS[currentSoxProduct];
 
-  // 기간 필터: value=0이면 전체
-  const memSliced = currentSoxPeriod === 0
-    ? allData
-    : allData.slice(-currentSoxPeriod);
+  // x축 기준: SOX 데이터, 기간 필터 적용
+  const soxSliced = currentSoxPeriod === 0
+    ? soxData
+    : soxData.slice(-currentSoxPeriod);
 
-  // inner join: 두 데이터셋 모두 존재하는 날짜만
-  const soxMap = new Map(soxData.map(r => [r.date, r.close]));
-  const joined = memSliced.filter(r => soxMap.has(r.date));
+  // 메모리 데이터 맵 (날짜 → 가격)
+  const memMap = new Map(allData.map(r => [r.date, r[product.key]]));
 
-  const labels = joined.map(r => {
+  const labels = soxSliced.map(r => {
     const d = new Date(r.date);
     return `${d.getMonth() + 1}/${d.getDate()}`;
   });
-  const memValues = joined.map(r => r[product.key]);
-  const soxValues = joined.map(r => soxMap.get(r.date));
+  // SOX는 항상 전체 표시, 메모리는 없는 날짜 null (선 끊김)
+  const soxValues = soxSliced.map(r => r.close);
+  const memValues = soxSliced.map(r => {
+    const v = memMap.get(r.date);
+    return (v !== undefined && v > 0) ? v : null;
+  });
 
-  const isUp = memValues.length > 1
-    ? memValues[memValues.length - 1] >= memValues[0]
+  // 메모리 데이터가 있는 값들만으로 up/down 판단
+  const memPresent = memValues.filter(v => v !== null);
+  const isUp = memPresent.length > 1
+    ? memPresent[memPresent.length - 1] >= memPresent[0]
     : true;
   const lineColor = isUp ? '#ff4d4f' : '#4da3ff';
 
@@ -703,6 +708,7 @@ function drawSoxChart() {
           backgroundColor: gradient,
           fill: true,
           tension: 0.3,
+          spanGaps: false,
           pointRadius: 0,
           pointHitRadius: 20,
           pointHoverRadius: 5,
@@ -710,7 +716,7 @@ function drawSoxChart() {
           yAxisID: 'yMem',
         },
         {
-          label: 'SOX 지수',
+          label: 'SOXX 지수',
           data: soxValues,
           borderColor: 'rgba(136, 146, 176, 0.8)',
           borderWidth: 1.5,
