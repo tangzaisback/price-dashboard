@@ -158,6 +158,8 @@
     padding: 3px;
     overflow-x: auto;
     flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    -ms-overflow-style: none;
     scrollbar-width: none;
   }
   .chart-tabs::-webkit-scrollbar {
@@ -165,8 +167,9 @@
   }
   .chart-tab {
     flex-shrink: 0;
+    white-space: nowrap;
     min-width: fit-content;
-    padding: 8px 12px;
+    padding: 8px 16px;
     text-align: center;
     font-size: 13px;
     font-weight: 700;
